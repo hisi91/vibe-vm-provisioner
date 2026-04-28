@@ -1,7 +1,4 @@
 {
-  "_comment": "ansible/files/settings.json — Settings VS Code (code-server) optimisés pour le vibe-coding",
-
-  // ── Terminal ────────────────────────────────────────────────────────────────
   "terminal.integrated.defaultProfile.linux": "bash",
   "terminal.integrated.profiles.linux": {
     "bash": {
@@ -17,7 +14,6 @@
   "terminal.integrated.cursorStyle": "line",
   "terminal.integrated.copyOnSelection": true,
 
-  // ── Éditeur ─────────────────────────────────────────────────────────────────
   "workbench.colorTheme": "Default Dark+",
   "workbench.iconTheme": "vs-seti",
   "editor.fontSize": 14,
@@ -39,7 +35,6 @@
   "editor.linkedEditing": true,
   "editor.stickyScroll.enabled": true,
 
-  // ── Fichiers ────────────────────────────────────────────────────────────────
   "files.autoSave": "afterDelay",
   "files.autoSaveDelay": 1000,
   "files.trimTrailingWhitespace": true,
@@ -53,13 +48,11 @@
     "**/*.pyc": true
   },
 
-  // ── Git ─────────────────────────────────────────────────────────────────────
   "git.enableSmartCommit": true,
   "git.confirmSync": false,
   "git.autofetch": true,
   "scm.diffDecorations": "all",
 
-  // ── Python ──────────────────────────────────────────────────────────────────
   "python.defaultInterpreterPath": "/usr/bin/python3",
   "python.formatting.provider": "none",
   "[python]": {
@@ -67,7 +60,6 @@
     "editor.defaultFormatter": "ms-python.python"
   },
 
-  // ── JavaScript / TypeScript ─────────────────────────────────────────────────
   "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
@@ -87,18 +79,15 @@
   "prettier.trailingComma": "es5",
   "prettier.printWidth": 100,
 
-  // ── Explorer ────────────────────────────────────────────────────────────────
   "explorer.confirmDelete": false,
   "explorer.confirmDragAndDrop": false,
   "explorer.compactFolders": false,
 
-  // ── Workbench ───────────────────────────────────────────────────────────────
   "workbench.startupEditor": "none",
   "workbench.editor.enablePreview": false,
   "workbench.editor.tabSizing": "shrink",
   "breadcrumbs.enabled": true,
 
-  // ── code-server spécifique ──────────────────────────────────────────────────
   "telemetry.telemetryLevel": "off",
   "update.mode": "none",
   "extensions.autoUpdate": false
