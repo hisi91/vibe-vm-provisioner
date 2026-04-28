@@ -74,8 +74,10 @@ _check-env:
 .PHONY: _gen-inventory
 _gen-inventory:
 	@mkdir -p ansible
-	@envsubst < ansible/inventory.ini.tpl > ansible/inventory.ini
+	@export TARGET_IP="$(TARGET_IP)" TARGET_USER="$(TARGET_USER)" SSH_KEY_PATH="$(SSH_KEY_PATH)"; \
+	envsubst '$$TARGET_IP $$TARGET_USER $$SSH_KEY_PATH' < ansible/inventory.ini.tpl > ansible/inventory.ini
 	@echo -e "$(GREEN)✔  inventory.ini généré$(RESET)"
+	@echo "--- inventory.ini généré ---" && cat ansible/inventory.ini
 
 .PHONY: help
 help:  ## Affiche cette aide
