@@ -1,26 +1,21 @@
 # =============================================================================
 # Makefile — Point d'entrée unique du provisioning vibe-coding VM
-# Charge .env, appelle ansible-playbook, affiche l'URL finale
 # =============================================================================
 
 SHELL := /bin/bash
 ENV_FILE := .env
 
-# Charge .env si présent
 ifneq (,$(wildcard $(ENV_FILE)))
   include $(ENV_FILE)
   export $(shell sed 's/=.*//' $(ENV_FILE))
 endif
 
-# Couleurs
 CYAN  := \033[0;36m
 GREEN := \033[0;32m
 RED   := \033[0;31m
 RESET := \033[0m
 
 .DEFAULT_GOAL := help
-
-## ─── Cibles principales ────────────────────────────────────────────────────
 
 .PHONY: deploy
 deploy: _check-env _gen-inventory  ## Provisionne la VM complète (make deploy)
@@ -60,11 +55,9 @@ logs: _check-env  ## Affiche les logs de code-server
 		"$(TARGET_USER)@$(TARGET_IP)" \
 		'docker logs -f code-server'
 
-## ─── Cibles internes ───────────────────────────────────────────────────────
-
 .PHONY: _check-env
 _check-env:
-	@test -f $(ENV_FILE) || { echo -e "$(RED)✗  Fichier .env manquant. Copier .env.example → .env et renseigner les variables.$(RESET)"; exit 1; }
+	@test -f $(ENV_FILE) || { echo -e "$(RED)✗  Fichier .env manquant.$(RESET)"; exit 1; }
 	@for var in TARGET_IP TARGET_USER SSH_KEY_PATH GEMINI_API_KEY CS_PASSWORD WORKSPACE_REPO; do \
 		eval val=\$${$$var}; \
 		[ -n "$$val" ] || { echo -e "$(RED)✗  Variable $$var non définie dans .env$(RESET)"; exit 1; }; \
@@ -74,10 +67,13 @@ _check-env:
 .PHONY: _gen-inventory
 _gen-inventory:
 	@mkdir -p ansible
-	@export TARGET_IP="$(TARGET_IP)" TARGET_USER="$(TARGET_USER)" SSH_KEY_PATH="$(SSH_KEY_PATH)"; \
-	envsubst '$$TARGET_IP $$TARGET_USER $$SSH_KEY_PATH' < ansible/inventory.ini.tpl > ansible/inventory.ini
+	@echo "[vibe_vm]" > ansible/inventory.ini
+	@echo "$(TARGET_IP) ansible_user=$(TARGET_USER) ansible_ssh_private_key_file=$(SSH_KEY_PATH) ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'" >> ansible/inventory.ini
+	@echo "" >> ansible/inventory.ini
+	@echo "[vibe_vm:vars]" >> ansible/inventory.ini
+	@echo "ansible_python_interpreter=/usr/bin/python3" >> ansible/inventory.ini
 	@echo -e "$(GREEN)✔  inventory.ini généré$(RESET)"
-	@echo "--- inventory.ini généré ---" && cat ansible/inventory.ini
+	@cat ansible/inventory.ini
 
 .PHONY: help
 help:  ## Affiche cette aide
