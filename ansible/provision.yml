@@ -1,8 +1,5 @@
 # =============================================================================
 # ansible/provision.yml — Playbook principal de provisioning vibe-coding VM
-# Exécute dans l'ordre : apt, Docker CE, nvm+Node+Gemini CLI, clone workspace,
-# code-server (Docker), settings VS Code, extensions, ufw, health check.
-# Idempotent : rejouable sans effet de bord.
 # =============================================================================
 
 ---
@@ -14,12 +11,14 @@
   vars:
     node_version: "lts/*"
     nvm_version: "v0.39.7"
-    nvm_dir: "/home/{{ target_user }}/.nvm"
-    workspace_dir: "/home/{{ target_user }}/workspace"
-    cs_config_dir: "/home/{{ target_user }}/.config/code-server"
-    cs_vscode_dir: "/home/{{ target_user }}/.local/share/code-server/User"
-    cs_extensions_dir: "/home/{{ target_user }}/.local/share/code-server/extensions"
-    compose_dir: "/home/{{ target_user }}/code-server"
+    # Gère root (/root) et les autres users (/home/user)
+    user_home: "{{ '/root' if target_user == 'root' else '/home/' + target_user }}"
+    nvm_dir: "{{ user_home }}/.nvm"
+    workspace_dir: "{{ user_home }}/workspace"
+    cs_config_dir: "{{ user_home }}/.config/code-server"
+    cs_vscode_dir: "{{ user_home }}/.local/share/code-server/User"
+    cs_extensions_dir: "{{ user_home }}/.local/share/code-server/extensions"
+    compose_dir: "{{ user_home }}/code-server"
     docker_packages:
       - docker-ce
       - docker-ce-cli
@@ -39,8 +38,8 @@
       - lsb-release
       - acl
 
-  # ─── A) APT : paquets système ──────────────────────────────────────────────
   tasks:
+  # ─── A) APT ────────────────────────────────────────────────────────────────
     - name: "APT | Mise à jour du cache"
       ansible.builtin.apt:
         update_cache: true
@@ -101,48 +100,34 @@
         state: started
 
   # ─── C) nvm + Node LTS + Gemini CLI ───────────────────────────────────────
-    - name: "nvm | Vérification de l'installation"
-      ansible.builtin.stat:
-        path: "{{ nvm_dir }}/nvm.sh"
-      register: nvm_installed
-
-    - name: "nvm | Installation de nvm {{ nvm_version }}"
-      become: false
-      ansible.builtin.shell:
-        cmd: >
-          curl -fsSL
-          https://raw.githubusercontent.com/nvm-sh/nvm/{{ nvm_version }}/install.sh
-          | bash
-      when: not nvm_installed.stat.exists
-
-    - name: "nvm | Installation de Node {{ node_version }}"
-      become: false
+    - name: "nvm + Node + Gemini CLI | Installation complète en une passe"
       ansible.builtin.shell:
         cmd: |
           export NVM_DIR="{{ nvm_dir }}"
+          export HOME="{{ user_home }}"
+
+          # Installer nvm si absent
+          if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/{{ nvm_version }}/install.sh | bash
+          fi
+
+          # Charger nvm
           source "$NVM_DIR/nvm.sh"
+
+          # Installer Node LTS si absent
           nvm install {{ node_version }}
           nvm alias default {{ node_version }}
-        executable: /bin/bash
-      register: node_install
-      changed_when: "'already installed' not in node_install.stdout"
 
-    - name: "Gemini CLI | Installation globale de @google/gemini-cli"
-      become: false
-      ansible.builtin.shell:
-        cmd: |
-          export NVM_DIR="{{ nvm_dir }}"
-          source "$NVM_DIR/nvm.sh"
-          npm list -g @google/gemini-cli 2>/dev/null | grep gemini-cli \
+          # Installer Gemini CLI si absent
+          npm list -g @google/gemini-cli 2>/dev/null | grep -q gemini-cli \
             || npm install -g @google/gemini-cli
         executable: /bin/bash
-      register: gemini_install
-      changed_when: "'added' in gemini_install.stdout"
+      register: nvm_result
+      changed_when: "'already installed' not in nvm_result.stdout"
 
-    - name: "Gemini CLI | Injection de GEMINI_API_KEY dans .bashrc"
-      become: false
+    - name: "Gemini CLI | Injection dans .bashrc"
       ansible.builtin.blockinfile:
-        path: "/home/{{ target_user }}/.bashrc"
+        path: "{{ user_home }}/.bashrc"
         marker: "# {mark} GEMINI CLI — géré par Ansible"
         block: |
           export GEMINI_API_KEY="{{ gemini_api_key }}"
@@ -154,38 +139,35 @@
 
   # ─── D) Clone du workspace ─────────────────────────────────────────────────
     - name: "Workspace | Création du répertoire"
-      become: false
       ansible.builtin.file:
         path: "{{ workspace_dir }}"
         state: directory
         mode: "0755"
+        owner: "{{ target_user }}"
 
-    - name: "Workspace | Clone du repo {{ workspace_repo }}"
-      become: false
+    - name: "Workspace | Clone du repo"
       ansible.builtin.git:
         repo: "{{ workspace_repo }}"
         dest: "{{ workspace_dir }}"
-        update: false          # idempotent : ne re-clone pas si déjà présent
+        update: false
         force: false
-      ignore_errors: true       # si repo privé sans token, on continue
+      ignore_errors: true
 
   # ─── E) code-server via Docker Compose ────────────────────────────────────
     - name: "code-server | Création du répertoire de déploiement"
-      become: false
       ansible.builtin.file:
         path: "{{ compose_dir }}"
         state: directory
         mode: "0755"
+        owner: "{{ target_user }}"
 
     - name: "code-server | Déploiement de docker-compose.yml"
-      become: false
       ansible.builtin.copy:
         src: files/docker-compose.yml
         dest: "{{ compose_dir }}/docker-compose.yml"
         mode: "0644"
 
-    - name: "code-server | Génération du fichier .env pour compose"
-      become: false
+    - name: "code-server | Génération du .env pour compose"
       ansible.builtin.copy:
         dest: "{{ compose_dir }}/.env"
         mode: "0600"
@@ -199,29 +181,27 @@
 
   # ─── F) settings.json VS Code ──────────────────────────────────────────────
     - name: "VS Code | Création du répertoire User settings"
-      become: false
       ansible.builtin.file:
         path: "{{ cs_vscode_dir }}"
         state: directory
         mode: "0755"
+        recurse: true
 
     - name: "VS Code | Injection du settings.json"
-      become: false
       ansible.builtin.copy:
         src: files/settings.json
         dest: "{{ cs_vscode_dir }}/settings.json"
         mode: "0644"
 
-  # ─── G) Extensions VS Code ─────────────────────────────────────────────────
-    - name: "Extensions | Création du répertoire extensions"
-      become: false
+  # ─── G) Extensions + démarrage code-server ─────────────────────────────────
+    - name: "Extensions | Création du répertoire"
       ansible.builtin.file:
         path: "{{ cs_extensions_dir }}"
         state: directory
         mode: "0755"
+        recurse: true
 
-    - name: "Extensions | Démarrage temporaire de code-server pour installer les extensions"
-      become: false
+    - name: "Extensions | Installation via container éphémère"
       ansible.builtin.shell:
         cmd: |
           docker pull codercom/code-server:latest
@@ -229,25 +209,22 @@
             -v "{{ cs_extensions_dir }}:/home/coder/.local/share/code-server/extensions" \
             -e PASSWORD="{{ cs_password }}" \
             codercom/code-server:latest
-          sleep 5
+          sleep 8
           for ext in ms-python.python dbaeumer.vscode-eslint esbenp.prettier-vscode; do
             docker exec cs-ext-install \
               /usr/bin/code-server --install-extension "$ext" 2>/dev/null || true
           done
-          docker stop cs-ext-install
+          docker stop cs-ext-install || true
         executable: /bin/bash
-      register: ext_result
-      changed_when: "'Extension' in ext_result.stdout"
       failed_when: false
 
-    - name: "Extensions | Démarrage de code-server via Docker Compose"
-      become: false
+    - name: "code-server | Démarrage via Docker Compose"
       ansible.builtin.shell:
         cmd: docker compose up -d --remove-orphans
         chdir: "{{ compose_dir }}"
         executable: /bin/bash
 
-  # ─── H) ufw — Pare-feu ─────────────────────────────────────────────────────
+  # ─── H) ufw ────────────────────────────────────────────────────────────────
     - name: "ufw | Autorisation SSH (22)"
       community.general.ufw:
         rule: allow
@@ -260,14 +237,14 @@
         port: "8080"
         proto: tcp
 
-    - name: "ufw | Activation du pare-feu"
+    - name: "ufw | Activation"
       community.general.ufw:
         state: enabled
         policy: deny
         direction: incoming
 
   # ─── I) Health check ───────────────────────────────────────────────────────
-    - name: "Health check | Attente que code-server réponde (5 tentatives)"
+    - name: "Health check | Attente que code-server réponde"
       ansible.builtin.uri:
         url: "https://localhost:8080"
         validate_certs: false
@@ -276,13 +253,11 @@
       retries: 5
       delay: 10
       until: health.status in [200, 302, 401]
-      ignore_errors: false
 
     - name: "Health check | ✔ code-server opérationnel"
       ansible.builtin.debug:
-        msg: "code-server répond sur https://{{ ansible_host }}:8080 (status {{ health.status }})"
+        msg: "✔ code-server répond sur https://{{ ansible_host }}:8080 (HTTP {{ health.status }})"
 
-  # ─── Handlers ──────────────────────────────────────────────────────────────
   handlers:
     - name: Restart Docker
       ansible.builtin.systemd:
