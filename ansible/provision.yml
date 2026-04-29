@@ -246,7 +246,7 @@
   # ─── I) Health check ───────────────────────────────────────────────────────
     - name: "Health check | Attente que code-server réponde"
       ansible.builtin.uri:
-        url: "https://localhost:8080"
+        url: "http://localhost:8080"
         validate_certs: false
         status_code: [200, 302, 401]
       register: health
@@ -256,7 +256,7 @@
 
     - name: "Health check | ✔ code-server opérationnel"
       ansible.builtin.debug:
-        msg: "✔ code-server répond sur https://{{ ansible_host }}:8080 (HTTP {{ health.status }})"
+        msg: "✔ code-server répond sur http://{{ ansible_host }}:8080 (HTTP {{ health.status }})"
 
   handlers:
     - name: Restart Docker
