@@ -1,6 +1,6 @@
 # =============================================================================
-# ansible/provision.yml — Provisioning vibe-coding VM (code-server natif)
-# code-server installé directement sur la machine (natif, sans Docker)
+# ansible/provision.yml — Provisioning vibe-coding VM (code-server natif + Ruflo)
+# code-server installé directement sur la machine, pas via Docker
 # Accès : http://<IP>:8080
 # =============================================================================
 
@@ -44,8 +44,9 @@
       ansible.builtin.apt:
         name: "{{ apt_packages }}"
         state: present
-  # ─── C) nvm + Node LTS + Gemini CLI ───────────────────────────────────────
-    - name: "nvm + Node + Gemini CLI | Installation"
+
+  # ─── B) nvm + Node LTS + outils globaux ───────────────────────────────────
+    - name: "nvm + Node | Installation"
       ansible.builtin.shell:
         cmd: |
           export NVM_DIR="{{ nvm_dir }}"
@@ -58,26 +59,52 @@
           source "$NVM_DIR/nvm.sh"
           nvm install {{ node_version }}
           nvm alias default {{ node_version }}
-
-          npm list -g @google/gemini-cli 2>/dev/null | grep -q gemini-cli \
-            || npm install -g @google/gemini-cli
         executable: /bin/bash
       register: nvm_result
       changed_when: "'already installed' not in nvm_result.stdout"
 
-    - name: "nvm | Injection dans .bashrc"
+    - name: "npm global | Installation de tous les outils IA"
+      ansible.builtin.shell:
+        cmd: |
+          export NVM_DIR="{{ nvm_dir }}"
+          source "$NVM_DIR/nvm.sh"
+
+          # Gemini CLI
+          npm list -g @google/gemini-cli 2>/dev/null | grep -q gemini-cli \
+            || npm install -g @google/gemini-cli
+
+          # TypeScript
+          npm list -g typescript 2>/dev/null | grep -q typescript \
+            || npm install -g typescript
+
+          # Ruflo (orchestrateur multi-agents Claude)
+          npm list -g ruflo 2>/dev/null | grep -q ruflo \
+            || npm install -g ruflo@latest
+
+          # agentic-flow (embeddings/routing pour Ruflo)
+          npm list -g agentic-flow 2>/dev/null | grep -q agentic-flow \
+            || npm install -g agentic-flow
+        executable: /bin/bash
+      register: npm_global
+      changed_when: "'added' in npm_global.stdout"
+
+    - name: "env | Injection dans .bashrc"
       ansible.builtin.blockinfile:
         path: "{{ user_home }}/.bashrc"
-        marker: "# {mark} NVM + GEMINI — géré par Ansible"
+        marker: "# {mark} VIBE-CODING ENV — géré par Ansible"
         block: |
-          export GEMINI_API_KEY="{{ gemini_api_key }}"
+          # nvm
           export NVM_DIR="{{ nvm_dir }}"
           [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
           [ -s "$NVM_DIR/bash_completion" ] && source "$NVM_DIR/bash_completion"
+
+          # Clés API
+          export GEMINI_API_KEY="{{ gemini_api_key }}"
+          export ANTHROPIC_API_KEY="{{ anthropic_api_key }}"
         create: true
         mode: "0644"
 
-  # ─── D) Clone du workspace ─────────────────────────────────────────────────
+  # ─── C) Clone du workspace ─────────────────────────────────────────────────
     - name: "Workspace | Création du répertoire"
       ansible.builtin.file:
         path: "{{ workspace_dir }}"
@@ -93,7 +120,61 @@
         force: false
       ignore_errors: true
 
-  # ─── E) code-server natif (sans Docker) ───────────────────────────────────
+  # ─── D) Ruflo — initialisation du projet ──────────────────────────────────
+    - name: "Ruflo | Initialisation dans le workspace"
+      ansible.builtin.shell:
+        cmd: |
+          export NVM_DIR="{{ nvm_dir }}"
+          export HOME="{{ user_home }}"
+          export ANTHROPIC_API_KEY="{{ anthropic_api_key }}"
+          source "$NVM_DIR/nvm.sh"
+
+          cd {{ workspace_dir }}
+
+          # Init seulement si pas déjà fait
+          if [ ! -f ".claude-flow/config.yaml" ]; then
+            ruflo init --yes 2>/dev/null || true
+          fi
+
+          # Initialiser la mémoire vectorielle
+          ruflo memory init 2>/dev/null || true
+        executable: /bin/bash
+      changed_when: false
+
+    - name: "Ruflo | Service daemon via systemd"
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/ruflo-daemon.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Ruflo AI Agent Daemon
+          After=network.target
+
+          [Service]
+          Type=simple
+          User={{ target_user }}
+          WorkingDirectory={{ workspace_dir }}
+          Environment="HOME={{ user_home }}"
+          Environment="NVM_DIR={{ nvm_dir }}"
+          Environment="ANTHROPIC_API_KEY={{ anthropic_api_key }}"
+          Environment="GEMINI_API_KEY={{ gemini_api_key }}"
+          ExecStartPre=/bin/bash -c 'source {{ nvm_dir }}/nvm.sh'
+          ExecStart=/bin/bash -c 'source {{ nvm_dir }}/nvm.sh && ruflo daemon start --foreground'
+          Restart=on-failure
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: "Ruflo | Activation du daemon"
+      ansible.builtin.systemd:
+        name: ruflo-daemon
+        enabled: true
+        state: started
+        daemon_reload: true
+      ignore_errors: true
+
+  # ─── E) code-server natif ─────────────────────────────────────────────────
     - name: "code-server | Vérification si déjà installé"
       ansible.builtin.stat:
         path: /usr/bin/code-server
@@ -152,15 +233,14 @@
         executable: /bin/bash
       changed_when: false
 
-  # ─── H) code-server comme service systemd ─────────────────────────────────
-    - name: "systemd | Activation et démarrage de code-server"
+    - name: "code-server | Activation via systemd"
       ansible.builtin.systemd:
         name: "code-server@{{ target_user }}"
         enabled: true
         state: restarted
         daemon_reload: true
 
-  # ─── I) ufw ────────────────────────────────────────────────────────────────
+  # ─── H) ufw ────────────────────────────────────────────────────────────────
     - name: "ufw | Autorisation SSH (22)"
       community.general.ufw:
         rule: allow
@@ -179,7 +259,7 @@
         policy: deny
         direction: incoming
 
-  # ─── J) Health check ───────────────────────────────────────────────────────
+  # ─── I) Health check ───────────────────────────────────────────────────────
     - name: "Health check | Attente que code-server réponde"
       ansible.builtin.uri:
         url: "http://localhost:8080"
@@ -190,6 +270,27 @@
       delay: 10
       until: health.status in [200, 302, 401]
 
-    - name: "Health check | ✔ code-server opérationnel"
+    - name: "Health check | Ruflo doctor"
+      ansible.builtin.shell:
+        cmd: |
+          export NVM_DIR="{{ nvm_dir }}"
+          export HOME="{{ user_home }}"
+          export ANTHROPIC_API_KEY="{{ anthropic_api_key }}"
+          source "$NVM_DIR/nvm.sh"
+          cd {{ workspace_dir }}
+          ruflo doctor 2>/dev/null || true
+        executable: /bin/bash
+      register: ruflo_doctor
+      changed_when: false
+
+    - name: "Health check | Résumé Ruflo"
       ansible.builtin.debug:
-        msg: "✔ code-server répond sur http://{{ ansible_host }}:8080 (HTTP {{ health.status }})"
+        msg: "{{ ruflo_doctor.stdout_lines[-3:] }}"
+
+    - name: "Health check | ✔ Stack complète opérationnelle"
+      ansible.builtin.debug:
+        msg:
+          - "✔ code-server  → http://{{ ansible_host }}:8080"
+          - "✔ gemini CLI   → taper 'gemini' dans le terminal"
+          - "✔ ruflo        → taper 'ruflo doctor' dans le terminal"
+          - "✔ workspace    → {{ workspace_dir }}"
