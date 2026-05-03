@@ -27,6 +27,7 @@ deploy: _check-env _gen-inventory  ## Provisionne la VM complète (make deploy)
 		-u "$(TARGET_USER)" \
 		-e "cs_password=$(CS_PASSWORD)" \
 		-e "gemini_api_key=$(GEMINI_API_KEY)" \
+		-e "anthropic_api_key=$(ANTHROPIC_API_KEY)" \
 		-e "workspace_repo=$(WORKSPACE_REPO)" \
 		-e "target_user=$(TARGET_USER)" \
 		$(ANSIBLE_EXTRA_ARGS)
