@@ -31,7 +31,7 @@ deploy: _check-env _gen-inventory  ## Provisionne la VM complète (make deploy)
 		-e "target_user=$(TARGET_USER)" \
 		$(ANSIBLE_EXTRA_ARGS)
 	@echo -e "$(GREEN)✔  Provisioning terminé !$(RESET)"
-	@echo -e "$(GREEN)🌐  Accès VS Code : https://$(TARGET_IP):8080$(RESET)"
+	@echo -e "$(GREEN)🌐  Accès VS Code : http://$(TARGET_IP):8080$(RESET)"
 	@echo -e "$(GREEN)🔑  Mot de passe  : voir CS_PASSWORD dans .env$(RESET)"
 
 .PHONY: destroy
