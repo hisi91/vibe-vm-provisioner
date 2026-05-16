@@ -81,6 +81,7 @@ TARGET_IP=
 TARGET_USER=
 SSH_KEY_PATH=~/.ssh/vibe-vm
 GEMINI_API_KEY=
+ANTHROPIC_API_KEY=
 CS_PASSWORD=
 WORKSPACE_REPO=https://github.com/hisi91/vibe-vm-provisioner
 ```
@@ -91,6 +92,7 @@ WORKSPACE_REPO=https://github.com/hisi91/vibe-vm-provisioner
 | `TARGET_USER` | Utilisateur SSH (`root` sur Vultr/Debian) | `root` |
 | `SSH_KEY_PATH` | Chemin vers la clé privée SSH | `~/.ssh/vibe-vm` |
 | `GEMINI_API_KEY` | Clé API Google Gemini | `AIza...` |
+| `ANTHROPIC_API_KEY` | Clé API Claud | `AIza...` |
 | `CS_PASSWORD` | Mot de passe pour accéder à VS Code | `MonP@ss!2024` |
 | `WORKSPACE_REPO` | URL HTTPS du repo git à cloner | `https://github.com/user/project.git` |
 
