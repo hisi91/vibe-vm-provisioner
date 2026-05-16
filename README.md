@@ -30,14 +30,11 @@ Makefile                                 code-server :8080 (natif)
 
 ```bash
 # Ansible
-pip install ansible
+apt install ansible
 ansible-galaxy collection install community.general
 
 # envsubst (Linux — normalement déjà présent)
 apt install gettext
-
-# envsubst (Mac)
-brew install gettext && brew link gettext --force
 ```
 
 ### VM cible
@@ -77,6 +74,15 @@ ssh -i ~/.ssh/vibe-vm root@<TARGET_IP> echo "OK"
 ```bash
 cp .env.example .env
 nano .env
+```
+
+```bash
+TARGET_IP=
+TARGET_USER=
+SSH_KEY_PATH=~/.ssh/vibe-vm
+GEMINI_API_KEY=
+CS_PASSWORD=
+WORKSPACE_REPO=https://github.com/hisi91/vibe-vm-provisioner
 ```
 
 | Variable | Description | Exemple |
