@@ -1,73 +1,79 @@
-# 🎸 Vibe-coding VM — Provisioner automatique
+# Vibe-coding VM - Provisioner automatique
 
-> Une seule commande depuis ta machine locale pour transformer une VM Debian/Ubuntu
-> vierge en environnement de vibe-coding complet : VS Code dans le navigateur +
-> Gemini CLI + Ruflo (orchestrateur multi-agents Claude).
+Une seule commande depuis ta machine locale pour transformer une VM Debian/Ubuntu
+vierge en environnement de vibe-coding complet : VS Code dans le navigateur +
+Gemini CLI + Ruflo (orchestrateur multi-agents Claude).
 
 ```bash
 ./bootstrap.sh <IP_VM_ANSIBLE>
-# → http://<IP_VM_CIBLE>:8080
+# -> http://<IP_VM_CIBLE>:8080
 ```
 
 ---
 
-## 📐 Architecture
+## Architecture
 
 ```
 Ta machine locale
-  └── ./bootstrap.sh 45.77.228.140
-        │
-        ├── Demande interactive des infos (.env)
-        ├── SSH → VM Ansible (45.77.228.140)
-        │     ├── apt + ansible + community.general
-        │     ├── git clone du repo
-        │     ├── ssh-keygen → ~/.ssh/vibe-vm
-        │     ├── ssh-copy-id → VM cible
-        │     ├── écriture du .env
-        │     └── make deploy
-        │           └── SSH → VM cible (ex: 173.199.90.75)
-        │                 ├── paquets système
-        │                 ├── nvm + Node LTS
-        │                 ├── Gemini CLI
-        │                 ├── TypeScript
-        │                 ├── Ruflo + agentic-flow
-        │                 ├── code-server natif (systemd)
-        │                 ├── settings.json + extensions VS Code
-        │                 └── ufw (ports 22 + 8080)
-        │
-        └── ✔ http://<IP_VM_CIBLE>:8080
+  |
+  +-- ./bootstrap.sh 45.77.228.140
+        |
+        +-- Lit .env si present, sinon mode interactif
+        +-- Demande de confirmation (recap des variables)
+        +-- Ecrit le script remote dans /tmp/vibe_setup.sh
+        +-- scp -> copie le script sur VM Ansible
+        +-- ssh -> execute le script sur VM Ansible
+              |
+              +-- apt + ansible + community.general
+              +-- git clone du repo
+              +-- ssh-keygen -> ~/.ssh/vibe-vm
+              +-- ssh-copy-id -> VM cible
+              +-- test connexion SSH vers VM cible
+              +-- ecriture du .env
+              +-- make deploy
+                    |
+                    +-- SSH -> VM cible (ex: 45.63.67.185)
+                          +-- paquets systeme
+                          +-- nvm + Node LTS
+                          +-- Gemini CLI
+                          +-- TypeScript
+                          +-- Ruflo + agentic-flow
+                          +-- code-server natif (systemd)
+                          +-- settings.json + extensions VS Code
+                          +-- ufw (ports 22 + 8080)
+                          +-- health check
 ```
 
 ---
 
-## ✅ Prérequis
+## Prerequis
 
-### Ta machine locale (point de départ)
+### Ta machine locale
 
-| Outil | Vérification |
+| Outil | Verification |
 |-------|-------------|
-| `ssh` | `ssh -V` |
-| `scp` | `scp -h` |
-| Clé SSH vers VM Ansible | `ls ~/.ssh/id_ed25519` |
+| ssh   | ssh -V      |
+| scp   | scp -h      |
+| Cle SSH vers VM Ansible | ls ~/.ssh/id_ed25519 |
 
-### VM Ansible (machine de contrôle)
-
-- Debian 12/13 ou Ubuntu 22/24
-- Accès SSH root depuis ta machine locale
-- Accès internet (pour installer Ansible et cloner le repo)
-
-### VM cible (machine provisionnée)
+### VM Ansible (machine de controle)
 
 - Debian 12/13 ou Ubuntu 22/24
-- Accès SSH root depuis la VM Ansible
-- **Ports ouverts** : 22 (SSH) + 8080 (VS Code)
-- 2 vCPU / 2 Go RAM minimum recommandé
+- Acces SSH root depuis ta machine locale
+- Acces internet
+
+### VM cible (machine provisionnee)
+
+- Debian 12/13 ou Ubuntu 22/24
+- Acces SSH root depuis la VM Ansible
+- Ports ouverts : 22 + 8080
+- 2 vCPU / 2 Go RAM minimum
 
 ---
 
-## 🚀 Déploiement complet — de A à Z
+## Deploiement de A a Z
 
-### Étape 1 — Cloner ce repo sur ta machine locale
+### Etape 1 - Cloner ce repo sur ta machine locale
 
 ```bash
 git clone https://github.com/hisi91/vibe-vm-provisioner.git
@@ -75,48 +81,111 @@ cd vibe-vm-provisioner
 chmod +x bootstrap.sh
 ```
 
-### Étape 2 — Lancer le bootstrap
+### Etape 2 - Lancer le bootstrap
 
 ```bash
-# Minimal (user=root, clé=~/.ssh/id_ed25519)
+# Minimal (user=root, cle=~/.ssh/id_ed25519)
 ./bootstrap.sh <IP_VM_ANSIBLE>
 
 # Avec user custom
 ./bootstrap.sh <IP_VM_ANSIBLE> ubuntu
 
-# Avec clé SSH spécifique
+# Avec cle SSH specifique
 ./bootstrap.sh <IP_VM_ANSIBLE> root ~/.ssh/ma-cle
 ```
 
-Le script te demande interactivement :
+#### Cas A - Avec un fichier .env existant
+
+Si un fichier `.env` est present dans le meme dossier que `bootstrap.sh`,
+les variables sont chargees automatiquement sans aucune question :
+
+```bash
+# Creer le .env depuis le template
+cp .env.example .env
+nano .env
+
+# Lancer - aucune question posee, juste une confirmation
+./bootstrap.sh 45.77.228.140
+```
+
+```bash
+TARGET_IP=45.63.67.xx
+TARGET_USER=root
+SSH_KEY_PATH=~/.ssh/vibe-vm
+GEMINI_API_KEY=AI...
+ANTHROPIC_API_KEY=sk-...
+CS_PASSWORD=MonP@ss20XX
+WORKSPACE_REPO=https://github.com/hisi91/vibe-vm-provisioner
+```
+
+#### Cas B - Sans fichier .env (mode interactif)
+
+Le script pose les questions une par une :
 
 ```
-📝 Configuration de l'environnement
+=== Configuration de l'environnement ===
 
-  IP de la VM cible             → ex: 173.199.90.75
-  Utilisateur SSH VM cible      → root (défaut)
-  Clé API Google Gemini         → https://aistudio.google.com/app/apikey
-  Clé API Anthropic (Ruflo)     → https://console.anthropic.com/settings/keys
-  Mot de passe VS Code          → min 8 caractères
-  URL repo Git workspace        → https://github.com/user/project.git
+  IP de la VM cible
+  -> ex: 45.63.67.185
+  > _
+
+  Utilisateur SSH sur la VM cible [defaut: root]
+  > _
+
+  Cle API Google Gemini
+  -> https://aistudio.google.com/app/apikey
+  > _
+
+  Cle API Anthropic (Claude / Ruflo)
+  -> https://console.anthropic.com/settings/keys
+  > _
+
+  Mot de passe pour acceder a VS Code
+  -> min 8 caracteres
+  > _
+
+  URL HTTPS du repo Git a cloner dans ~/workspace
+  -> Repo prive : https://TOKEN@github.com/user/repo.git
+  > _
 ```
 
-Puis affiche un récapitulatif et demande confirmation avant de lancer.
+#### Cas C - .env partiel
 
-### Étape 3 — Cas particulier : copie manuelle de la clé SSH
+Si le `.env` existe mais qu'il manque des variables, seules les variables
+manquantes sont demandees interactivement.
+
+### Etape 3 - Confirmation et lancement
+
+Le script affiche un recapitulatif et demande confirmation :
+
+```
+=== Recapitulatif ===
+
+  Source config      : .env (automatique)
+  TARGET_IP          : 45.63.67.185
+  TARGET_USER        : root
+  GEMINI_API_KEY     : AIzaSyDl...
+  ANTHROPIC_API_KEY  : sk-ant-a...
+  CS_PASSWORD        : ********
+  WORKSPACE_REPO     : https://github.com/hisi91/...
+
+  Confirmer et lancer le bootstrap ? [O/n] :
+```
+
+### Etape 4 - Cas particulier : copie manuelle de la cle SSH
 
 Si la VM cible n'accepte pas l'auth par mot de passe, le script affiche :
 
 ```
-⚠  Copie automatique impossible.
-   Copie manuelle de cette clé sur 173.199.90.75 :
-ssh-ed25519 AAAA...
+[!!]  Copie automatique impossible. Copie manuelle :
+
+  ssh-copy-id -i ~/.ssh/vibe-vm.pub root@45.63.67.185
 ```
 
-Dans ce cas, connecte-toi sur la VM cible et colle la clé :
+Connecte-toi sur la VM cible et colle la cle manuellement :
 
 ```bash
-# Depuis ta machine locale ou la VM Ansible
+# Depuis ta machine locale
 ssh root@<IP_VM_CIBLE>
 
 # Sur la VM cible
@@ -128,81 +197,96 @@ exit
 # Tester depuis la VM Ansible
 ssh -i ~/.ssh/vibe-vm root@<IP_VM_CIBLE> echo "OK"
 
-# Puis relancer le deploy
+# Relancer le deploy
 cd /root/vibe-vm-provisioner && make deploy
 ```
 
-### Étape 4 — Accéder à VS Code
+### Etape 5 - Acces a VS Code
 
 ```
 http://<IP_VM_CIBLE>:8080
 ```
 
-Entrer le mot de passe défini lors du bootstrap (`CS_PASSWORD`).
+Entrer le mot de passe defini dans `CS_PASSWORD`.
 
 ---
 
-## 🗂️ Structure du projet
+## Structure du projet
 
 ```
 vibe-vm-provisioner/
-├── bootstrap.sh                  # Script de déploiement complet depuis le local
-├── Makefile                      # make deploy / destroy / status / logs
-├── ansible.cfg                   # Config Ansible (stdout yaml natif, pipelining)
-├── .env.example                  # Template de variables (jamais commité)
-├── .env                          # Secrets générés par bootstrap.sh (gitignore)
-├── .gitignore                    # Exclut .env et inventory.ini
-└── ansible/
-    ├── inventory.ini.tpl         # Template → inventory.ini (via make)
-    ├── inventory.ini             # Généré automatiquement (gitignore)
-    ├── provision.yml             # Playbook principal
-    └── files/
-        └── settings.json         # Settings VS Code (JSON pur)
+|-- bootstrap.sh                  # Script de deploiement depuis le local
+|-- Makefile                      # make deploy / destroy / status / logs
+|-- ansible.cfg                   # stdout yaml natif, pipelining SSH
+|-- .env.example                  # Template de variables
+|-- .env                          # Secrets (dans .gitignore)
+|-- .gitignore                    # Exclut .env et inventory.ini
++-- ansible/
+    |-- inventory.ini.tpl         # Template -> inventory.ini (via make)
+    |-- inventory.ini             # Genere automatiquement (gitignore)
+    |-- provision.yml             # Playbook principal
+    +-- files/
+        +-- settings.json         # Settings VS Code (JSON pur)
 ```
 
 ---
 
-## 📦 Ce qui est installé sur la VM cible
+## Variables du .env
 
-| Composant | Détail |
-|-----------|--------|
-| Paquets système | `curl git unzip build-essential python3 ufw wget` |
-| `nvm` | v0.39.7 — gestionnaire Node.js |
-| Node.js | LTS (via nvm) |
-| `@google/gemini-cli` | IA conversationnelle dans le terminal |
-| `typescript` | Compilateur TypeScript global |
-| `ruflo` | Orchestrateur multi-agents Claude |
-| `agentic-flow` | Embeddings/routing pour Ruflo |
-| `code-server` | VS Code natif dans le navigateur (port 8080) |
-| Extension Python | `ms-python.python` |
-| Extension ESLint | `dbaeumer.vscode-eslint` |
-| Extension Prettier | `esbenp.prettier-vscode` |
-| `ufw` | Pare-feu — ports 22 et 8080 ouverts uniquement |
+| Variable | Description | Exemple |
+|----------|-------------|---------|
+| `TARGET_IP` | IP de la VM cible | `45.63.67.185` |
+| `TARGET_USER` | Utilisateur SSH VM cible | `root` |
+| `SSH_KEY_PATH` | Cle SSH generee par bootstrap | `~/.ssh/vibe-vm` |
+| `GEMINI_API_KEY` | Cle Google Gemini | `AIza...` |
+| `ANTHROPIC_API_KEY` | Cle Anthropic / Ruflo | `sk-ant-...` |
+| `CS_PASSWORD` | Mot de passe VS Code | `MonP@ss2024` |
+| `WORKSPACE_REPO` | Repo git a cloner | `https://github.com/...` |
+| `ANSIBLE_EXTRA_ARGS` | Args Ansible optionnels | `-vvv` ou vide |
 
 ---
 
-## ⚡ Commandes Makefile
+## Ce qui est installe sur la VM cible
+
+| Composant | Detail |
+|-----------|--------|
+| Paquets systeme | curl git unzip build-essential python3 ufw wget |
+| nvm v0.39.7 | Gestionnaire Node.js |
+| Node.js LTS | Via nvm |
+| @google/gemini-cli | IA conversationnelle dans le terminal |
+| typescript | Compilateur TypeScript global |
+| ruflo | Orchestrateur multi-agents Claude |
+| agentic-flow | Embeddings/routing pour Ruflo |
+| code-server | VS Code natif dans le navigateur (port 8080) |
+| ms-python.python | Extension Python |
+| dbaeumer.vscode-eslint | Extension ESLint |
+| esbenp.prettier-vscode | Extension Prettier |
+| ufw | Pare-feu - ports 22 et 8080 uniquement |
+
+---
+
+## Commandes Makefile
+
+A lancer depuis la VM Ansible dans `/root/vibe-vm-provisioner` :
 
 ```bash
-make deploy    # Provisionne la VM complète
-make status    # Vérifie l'état de code-server (systemd)
-make logs      # Affiche les logs en temps réel
-make destroy   # Arrête code-server
+make deploy    # Provisionne la VM complete
+make status    # Verifie l'etat de code-server (systemd)
+make logs      # Affiche les logs en temps reel
+make destroy   # Arrete code-server
 make help      # Liste toutes les commandes
 ```
 
-> Toutes ces commandes sont à lancer depuis la **VM Ansible**.
-
 ---
 
-## 🤖 Utiliser les outils IA
+## Utiliser les outils IA dans VS Code
 
 ### Gemini CLI
 
-Dans le terminal intégré de VS Code (`Ctrl+\``) :
+Dans le terminal integre de VS Code (Ctrl+backtick) :
 
 ```bash
-source ~/.bashrc    # si gemini n'est pas trouvé au 1er lancement
+source ~/.bashrc    # si gemini n'est pas trouve au 1er lancement
 gemini              # mode chat interactif
 gemini "explique ce fichier"
 ```
@@ -210,10 +294,10 @@ gemini "explique ce fichier"
 ### Ruflo (multi-agents Claude)
 
 ```bash
-# Vérifier l'état
+# Verifier l'etat
 ruflo doctor
 
-# Initialiser dans ton workspace
+# Initialiser dans le workspace
 cd ~/workspace
 ruflo init --yes
 ruflo swarm init --topology hierarchical --max-agents 4
@@ -223,84 +307,83 @@ ruflo agent spawn -t coder
 ruflo agent spawn -t tester
 ruflo agent spawn -t reviewer
 
-# Donner une tâche au swarm
-ruflo task "crée une API REST Node.js avec tests"
+# Donner une tache
+ruflo task "cree une API REST Node.js avec tests"
 
-# Surveiller les agents
+# Surveiller
 ruflo swarm status
 ```
 
 ---
 
-## 🔒 Sécurité
+## Securite
 
-- `.env` et `ansible/inventory.ini` dans `.gitignore` — jamais committé
-- Clés API saisies de façon masquée (mode secret) pendant le bootstrap
-- `ufw` activé : seuls les ports 22 et 8080 sont accessibles
-- Mot de passe code-server défini uniquement dans `.env`
-- Token Git (si dans `WORKSPACE_REPO`) jamais loggué
+- `.env` et `ansible/inventory.ini` dans `.gitignore` - jamais committe
+- Cles API saisies en mode masque pendant le bootstrap
+- `ufw` active : seuls les ports 22 et 8080 sont accessibles
+- Mot de passe code-server uniquement dans `.env`
+- Le script remote est cree dans `/tmp` et supprime apres usage
 
 ---
 
-## 🐛 Dépannage
+## Depannage
 
-**Vérifier code-server :**
+**Verifier code-server :**
 ```bash
-ssh -i ~/.ssh/vibe-vm root@<IP_VM_CIBLE> 'systemctl status code-server@root'
+ssh -i ~/.ssh/vibe-vm root@<IP_VM_CIBLE> systemctl status code-server@root
 ```
 
 **Voir les logs :**
 ```bash
 make logs
 # ou
-ssh -i ~/.ssh/vibe-vm root@<IP_VM_CIBLE> 'journalctl -u code-server@root -f'
+ssh -i ~/.ssh/vibe-vm root@<IP_VM_CIBLE> journalctl -u code-server@root -f
 ```
 
-**Redémarrer code-server :**
+**Redemarrer code-server :**
 ```bash
-ssh -i ~/.ssh/vibe-vm root@<IP_VM_CIBLE> 'systemctl restart code-server@root'
+ssh -i ~/.ssh/vibe-vm root@<IP_VM_CIBLE> systemctl restart code-server@root
 ```
 
-**`gemini` introuvable dans le terminal VS Code :**
+**gemini introuvable dans le terminal VS Code :**
 ```bash
 source ~/.bashrc
 gemini
 ```
 
-**Erreur `community.general.yaml` callback removed :**
+**make deploy ne se lance pas apres bootstrap :**
+Le script remote est copie via scp puis execute via ssh.
+Verifier que scp fonctionne depuis la VM Ansible vers la VM cible :
 ```bash
-# Vérifier ansible.cfg — doit contenir :
+ssh -i ~/.ssh/vibe-vm root@<IP_VM_CIBLE> echo "OK"
+```
+
+**Erreur community.general.yaml callback removed :**
+Verifier `ansible.cfg` - doit contenir :
+```ini
 stdout_callback = ansible.builtin.default
 result_format   = yaml
-# ET NON : stdout_callback = yaml
 ```
 
-**Inventory vide / `no hosts matched` :**
+**Inventory vide / no hosts matched :**
 ```bash
 cat ansible/inventory.ini   # doit contenir l'IP
-make deploy                 # le regénère automatiquement
-```
-
-**`ssh-copy-id` échoue sur la VM cible :**
-```bash
-# Sur la VM cible manuellement :
-echo "$(cat ~/.ssh/vibe-vm.pub)" >> ~/.ssh/authorized_keys
-chmod 600 ~/.ssh/authorized_keys
+make deploy                 # le regenere automatiquement
 ```
 
 ---
 
-## ♻️ Idempotence
+## Idempotence
 
-Le playbook est entièrement rejouable sans casser l'existant :
+Le playbook est entierement rejouable :
 
 ```bash
 cd /root/vibe-vm-provisioner
-make deploy   # toujours sûr à relancer
+make deploy   # toujours sur a relancer
 ```
 
 ---
 
-## 📄 Licence
+## Licence
 
 MIT
